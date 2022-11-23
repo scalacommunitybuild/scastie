@@ -62,6 +62,9 @@ $cm-active-hint-background: #7dc8e5;
 $cm-active-hint-text: #002b36;
 $cm-cursor: #00acdb;
 
+// Tooltip
+$code-background-color: #e3e3ca;
+
 .scastie {
   .light {
     .main-panel {
@@ -70,34 +73,38 @@ $cm-cursor: #00acdb;
   }
 
   .code, .configuration {
-    .cm-s-solarized.cm-s-light {
-      color: $cm-color;
+    .editor-wrapper {
       background-color: $cm-background-color;
 
-      .CodeMirror-cursor {
-        border-left-color: $cm-cursor;
-      }
+      .cm-s-solarized.cm-s-light {
+        color: $cm-color;
+        background-color: $cm-background-color;
 
-      .CodeMirror-simplescroll-vertical div,
-      .CodeMirror-simplescroll-horizontal div {
-        background: $submenu-background-color
-      }
+        .cm-cursor {
+          border-left-color: $cm-cursor;
+        }
 
-      .CodeMirror-hints {
-        background: $snippet-background-color;
-      }
+        .cm-simplescroll-vertical div,
+        .cm-simplescroll-horizontal div {
+          background: $submenu-background-color
+        }
 
-      li.CodeMirror-hint-active {
-        background: $cm-active-hint-background;
-        color: $cm-active-hint-text;
-      }
+        .cm-hints {
+          background: $snippet-background-color;
+        }
 
-      .CodeMirror-gutters {
-        border-right: 1px solid $cm-gutters-border-color;
-        background-color: $snippet-background-color;
-      }
-      .CodeMirror-linenumber {
-        color: $cm-gutters-linenumber-color;
+        li.cm-hint-active {
+          background: $cm-active-hint-background;
+          color: $cm-active-hint-text;
+        }
+
+        .cm-gutters {
+          border-right: 1px solid $cm-gutters-border-color;
+          background-color: $snippet-background-color;
+        }
+        .cm-linenumber {
+          color: $cm-gutters-linenumber-color;
+        }
       }
     }
   }

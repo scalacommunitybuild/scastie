@@ -25,10 +25,11 @@
     </encoder>
   </appender>
 
-  <appender name="SENTRY" class="com.getsentry.raven.logback.SentryAppender">
-    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>WARN</level>
-    </filter>
+  <appender name="SENTRY" class="io.sentry.logback.SentryAppender">
+    <options>
+        <dsn>https://a263fc9dfc314504abd70e03991c6994@o1427772.ingest.sentry.io/6779398</dsn>
+    </options>
+    <minimumEventLevel>WARN</minimumEventLevel>
   </appender>
 
   <logger name="akka" level="INFO"/>

@@ -1,8 +1,8 @@
 package com.olegych.scastie.client.components
 
-import com.olegych.scastie.client.components.editor.EditorOptions
 import japgolly.scalajs.react._
 import vdom.all._
+import com.olegych.scastie.client.components.editor.EditorKeymaps
 
 final case class HelpModal(isClosed: Boolean, close: Reusable[Callback]) {
   @inline def render: VdomElement = HelpModal.component(this)
@@ -42,22 +42,22 @@ object HelpModal {
       content = TagMod(
         p(cls := "normal", "Scastie is an interactive playground for Scala with support for sbt configuration."),
         p(cls := "normal", "Scastie editor supports Sublime Text ", sublime),
-        h2(s"Save (${EditorOptions.Keys.saveOrUpdate})"),
+        h2(s"Save (${EditorKeymaps.saveOrUpdate.getName})"),
         p(
           cls := "normal",
           "Run and save your code."
         ),
-        h2(s"New (${EditorOptions.Keys.openNew})"),
+        h2(s"New (${EditorKeymaps.openNewSnippetModal.getName})"),
         p(
           cls := "normal",
           "Removes all your code lines from the current editor instance and resets sbt configuration."
         ),
-        h2(s"Clear Messages (${EditorOptions.Keys.clear})"),
+        h2(s"Clear Messages (${EditorKeymaps.clear.getName})"),
         p(
           cls := "normal",
           "Removes all messages from the current editor instance."
         ),
-        h2(s"Format (${EditorOptions.Keys.format})"),
+        h2(s"Format (${EditorKeymaps.format.getName})"),
         p(cls := "normal",
           "The code formatting is done by scalafmt. You can configure the formatting with comments in your code. Read the ",
           scalafmtConfiguration),
@@ -80,7 +80,7 @@ object HelpModal {
           cls := "normal",
           "Create an url embeddable in external web pages."
         ),
-        h2(s"Console (${EditorOptions.Keys.console})"),
+        h2(s"Console (${EditorKeymaps.console.getName})"),
         p(
           cls := "normal",
           "You can see your code's output in the Scastie's console."

@@ -7,7 +7,7 @@ import scala.scalajs.js
 import scala.collection.mutable.{Map => MMap}
 import scala.util.{Try, Failure, Success}
 
-import org.scalajs.dom.raw.HTMLElement
+import org.scalajs.dom.HTMLElement
 
 import japgolly.scalajs.react._
 
@@ -76,9 +76,7 @@ object Global {
             )
             .setRunning(false)
             .copy(
-              attachedDoms = AttachedDoms(
-                attachedDoms.map(dom => (dom.getAttribute("uuid"), dom)).toMap
-              )
+              attachedDoms = attachedDoms.map(dom => (dom.getAttribute("uuid"), dom)).toMap
           )
       )
     )

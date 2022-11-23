@@ -1,60 +1,51 @@
 package com.olegych.scastie.client
 
 import com.olegych.scastie.api._
-
+import org.scalajs.dom
+import org.scalajs.dom.XMLHttpRequest
 import play.api.libs.json._
 
-import org.scalajs.dom
-import org.scalajs.dom.ext.Ajax
-import org.scalajs.dom.raw.XMLHttpRequest
-
 import scala.concurrent.Future
-import scalajs.concurrent.JSExecutionContext.Implicits.queue
+import scala.util.Try
 
-import scala.util.{Try, Success, Failure}
+import scalajs.concurrent.JSExecutionContext.Implicits.queue
+import scalajs.js.Thenable.Implicits._
+import scalajs.js
 
 class RestApiClient(serverUrl: Option[String]) extends RestApi {
 
   val apiBase: String = serverUrl.getOrElse("")
 
-  def tryParse[T: Reads](request: XMLHttpRequest): Option[T] = {
-    val rawJson = request.responseText
-    if (rawJson.nonEmpty) {
-      Try(Json.parse(rawJson)) match {
-        case Success(json) => {
-          Json.fromJson[T](json).asOpt
-        }
-        case Failure(e) => {
-          e.printStackTrace()
-          None
-        }
-      }
-    } else {
-      None
-    }
+  def tryParse[T: Reads](response: XMLHttpRequest): Option[T] =
+    tryParse(response.responseText)
+
+  def tryParse[T: Reads](response: dom.Response): Future[Option[T]] =
+    response.text().map(tryParse(_))
+
+  def tryParse[T: Reads](text: String): Option[T] = {
+    Option.when(text.nonEmpty)(text).flatMap(t =>
+      Try(Json.parse(t)).toOption.flatMap(Json.fromJson[T](_).asOpt)
+    )
   }
 
   def get[T: Reads](url: String): Future[Option[T]] = {
-    Ajax
-      .get(
-        url = apiBase + "/api" + url,
-        headers = Map("Accept" -> "application/json")
-      )
-      .map(tryParse[T] _)
+    val header = new dom.Headers(js.Dictionary("Accept" -> "application/json"))
+    dom
+      .fetch(apiBase + "/api" + url, js.Dynamic.literal(headers = header, method = dom.HttpMethod.GET).asInstanceOf[dom.RequestInit])
+      .flatMap(tryParse[T](_))
   }
 
   class Post[O: Reads]() {
     def using[I: Writes](url: String, data: I, async: Boolean = true): Future[Option[O]] = {
-      Ajax
-        .post(
-          url = apiBase + "/api" + url,
-          data = Json.prettyPrint(Json.toJson(data)),
-          headers = Map(
-            "Content-Type" -> "application/json",
-            "Accept" -> "application/json"
-          )
+      val header = new dom.Headers(js.Dictionary("Accept" -> "application/json", "Content-Type" -> "application/json"))
+      dom
+        .fetch(
+          apiBase + "/api" + url,
+          js.Dynamic
+            .literal(headers = header, method = dom.HttpMethod.POST, body = Json.prettyPrint(Json.toJson(data)))
+            .asInstanceOf[dom.RequestInit]
         )
-        .map(tryParse[O] _)
+        .flatMap(tryParse[O](_))
     }
   }
 

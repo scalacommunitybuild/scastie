@@ -19,11 +19,11 @@ object SbtShared {
   object ScalaVersions {
     val latest210 = "2.10.7"
     val latest211 = "2.11.12"
-    val latest212 = "2.12.16"
-    val latest213 = "2.13.8"
+    val latest212 = "2.12.17"
+    val latest213 = "2.13.10"
     val old3 = "3.0.2"
-    val stable3 = "3.1.3"
-    val latest3 = "3.2.0-RC1"
+    val stable3 = "3.2.0"
+    val latest3 = "3.2.1-RC2"
     val js = latest213
     val sbt = latest212
     val jvm = latest213
@@ -32,7 +32,7 @@ object SbtShared {
   }
 
   object ScalaJSVersions {
-    val current = "1.8.0"
+    val current = "1.11.0"
   }
 
   val runtimeProjectName = "runtime-scala"
@@ -88,8 +88,7 @@ object SbtShared {
           "-encoding",
           "UTF-8",
           "-feature",
-          "-unchecked",
-          "-target:jvm-1.8"
+          "-unchecked"
         )
 
       if (scalaV == ScalaVersions.latest210 || scalaV.startsWith("3.")) base
@@ -111,7 +110,10 @@ object SbtShared {
 
   lazy val baseJsSettings = Seq(
     test := {},
-    libraryDependencies += "org.scala-js" %%% "scalajs-dom" % "2.2.0",
+    libraryDependencies ++= Seq(
+      "org.scala-js" %%% "scalajs-dom" % "2.2.0",
+      "org.scala-js" %%% "scalajs-java-securerandom" % "1.0.0" cross(CrossVersion.for3Use2_13),
+    )
   )
 
   /* api is for the communication between sbt <=> server <=> frontend */
@@ -141,6 +143,7 @@ object SbtShared {
             "com.typesafe.play" %%% "play-json" % "2.10.0-RC5"
         }
       },
+      semanticdbEnabled := { if (scalaVersion.value.startsWith("2.10")) false else semanticdbEnabled.value },
       buildInfoKeys := Seq[BuildInfoKey](
         organization,
         "runtimeProjectName" -> runtimeProjectName,
@@ -161,14 +164,13 @@ object SbtShared {
 
   /* runtime* pretty print values and type */
   lazy val `runtime-scala` = (projectMatrix in file(runtimeProjectName))
+    .jvmPlatform(ScalaVersions.cross)
+    .jsPlatform(ScalaVersions.crossJS, baseJsSettings)
     .settings(
       baseSettings,
       version := versionRuntime,
       name := runtimeProjectName,
-    )
-    .jvmPlatform(ScalaVersions.cross)
-    .jsPlatform(ScalaVersions.crossJS, baseJsSettings)
-    .settings(
+      semanticdbEnabled := { if (scalaVersion.value.startsWith("2.10")) false else semanticdbEnabled.value },
       inConfig(Compile)(
         unmanagedSourceDirectories ++= scala2MajorSourceDirs(scalaSource.value, virtualAxes.value),
       )

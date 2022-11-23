@@ -1,63 +1,38 @@
 package com.olegych.scastie.client.components.editor
 
-import com.olegych.scastie.api
-import com.olegych.scastie.client.AttachedDoms
 import japgolly.scalajs.react._
-import japgolly.scalajs.react.vdom.all._
+import org.scalajs.dom.Element
+import typings.codemirrorState.mod._
+import typings.codemirrorView.mod._
 
-final case class Editor(visible: Boolean,
-                        isDarkTheme: Boolean,
-                        isPresentationMode: Boolean,
-                        isEmbedded: Boolean,
-                        showLineNumbers: Boolean,
-                        code: String,
-                        attachedDoms: AttachedDoms,
-                        instrumentations: Set[api.Instrumentation],
-                        compilationInfos: Set[api.Problem],
-                        runtimeError: Option[api.RuntimeError],
-                        saveOrUpdate: Reusable[Callback],
-                        clear: Reusable[Callback],
-                        openNewSnippetModal: Reusable[Callback],
-                        toggleHelp: Reusable[Callback],
-                        toggleConsole: Reusable[Callback],
-                        toggleLineNumbers: Reusable[Callback],
-                        togglePresentationMode: Reusable[Callback],
-                        formatCode: Reusable[Callback],
-                        codeChange: String ~=> Callback,
-) {
+import scalajs.js
+import vdom.all._
 
-  @inline def render: VdomElement = Editor.component(this)
+trait Editor {
+  val isDarkTheme: Boolean
+  val value: String
 }
 
 object Editor {
-  import EditorReusability._
+  def render(ref: Ref.Simple[Element]): VdomElement =
+    div(cls := "editor-wrapper cm-s-solarized cm-s-light").withRef(ref)
 
-  codemirror.AutoRefresh
-  codemirror.Comment
-  codemirror.Dialog
-  codemirror.CloseBrackets
-  codemirror.MatchBrackets
-  codemirror.BraceFold
-  codemirror.FoldCode
-  codemirror.Search
-  codemirror.SearchCursor
-  codemirror.HardWrap
-  codemirror.ShowHint
-  codemirror.RunMode
-  codemirror.SimpleScrollBars
-  codemirror.MatchHighlighter
-  codemirror.Sublime
-  codemirror.CLike
+  def updateTheme(ref: Ref.Simple[Element], prevProps: Option[Editor], props: Editor): Callback =
+    ref
+      .foreach(ref => {
+        val theme = if (props.isDarkTheme) "dark" else "light"
+        ref.setAttribute("class", s"editor-wrapper cm-s-solarized cm-s-$theme")
+      })
+      .when_(prevProps.map(_.isDarkTheme != props.isDarkTheme).getOrElse(true))
 
-  private val component =
-    ScalaComponent
-      .builder[Editor]("Editor")
-      .initialState(EditorState())
-      .renderBackend[EditorBackend]
-      .configure(Reusability.shouldComponentUpdate)
-      .componentDidMount(_.backend.start())
-      .componentDidUpdate(u => Callback.traverseOption(u.currentState.editor)(e => Callback(e.focus())))
-      .componentWillUnmount(_.backend.stop())
-      .componentWillReceiveProps(scope => scope.backend.update(scope))
-      .build
+  def updateCode(editorView: Hooks.UseStateF[CallbackTo, EditorView], newState: Editor): Callback = {
+    Callback {
+      editorView.value.dispatch(TransactionSpec().setChanges(new js.Object {
+        var from = 0
+        var to = editorView.value.state.doc.length
+        var insert = newState.value
+      }.asInstanceOf[ChangeSpec]))
+    }.when_(editorView.value.state.doc.toString() != newState.value)
+  }
+
 }

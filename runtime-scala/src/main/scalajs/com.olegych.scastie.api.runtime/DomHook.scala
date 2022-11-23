@@ -1,7 +1,7 @@
 package com.olegych.scastie.api
 package runtime
 
-import org.scalajs.dom.raw.HTMLElement
+import org.scalajs.dom.HTMLElement
 import scala.scalajs.js
 
 import scala.collection.mutable.Buffer
@@ -18,5 +18,5 @@ trait DomHook {
     uuid
   }
 
-  def attachedElements: js.Array[HTMLElement] = js.Array(elements.toSeq:_*)
+  def attachedElements: js.Array[HTMLElement] = js.Array(elements.toSeq: _*)
 }

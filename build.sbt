@@ -1,3 +1,4 @@
+import scala.sys.process.ProcessLogger
 import SbtShared._
 import com.typesafe.sbt.SbtNativePackager.Universal
 
@@ -5,8 +6,13 @@ def akka(module: String) = "com.typesafe.akka" %% ("akka-" + module) % "2.6.19"
 
 val akkaHttpVersion = "10.2.9"
 
-addCommandAlias("startAll", "sbtRunner/reStart;server/reStart;client/fastOptJS/startWebpackDevServer")
-addCommandAlias("startAllProd", "sbtRunner/reStart;server/fullOptJS/reStart")
+addCommandAlias("startAll", "sbtRunner/reStart;server/reStart;metalsRunner/reStart;client/fastLinkJS")
+addCommandAlias("startAllProd", "sbtRunner/reStart;metalsRunner/reStart;server/fullLinkJS/reStart")
+
+val fastLinkOutputDir = taskKey[String]("output directory for `yarn dev`")
+val fullLinkOutputDir = taskKey[String]("output directory for `yarn build`")
+
+val yarnBuild = taskKey[Unit]("builds es modules with `yarn build`")
 
 ThisBuild / packageTimestamp := None
 
@@ -22,6 +28,7 @@ lazy val scastie = project
       server,
       storage,
       utils,
+      metalsRunner,
     ).map(_.project)):_*
   )
   .settings(baseSettings)
@@ -32,7 +39,7 @@ lazy val scastie = project
       val ___ = (server / Universal / packageBin).value
     },
   )
-  .settings(Deployment.settings(server, sbtRunner))
+  .settings(Deployment.settings(server, sbtRunner, metalsRunner))
 
 lazy val testSettings =
   Seq(
@@ -44,7 +51,7 @@ lazy val loggingAndTest =
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % "1.2.11",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.4",
-      "com.getsentry.raven" % "raven-logback" % "8.0.3"
+      "io.sentry" % "sentry-logback" % "6.4.2"
     )
   ) ++ testSettings
 
@@ -91,6 +98,29 @@ lazy val smallRunnerRuntimeDependenciesInTest = {
     Test / testQuick := (Test / testQuick).dependsOn(smallRunnerRuntimeDependencies: _*).evaluated
   )
 }
+
+lazy val metalsRunner = project
+  .in(file("metals-runner"))
+  .settings(baseNoCrossSettings)
+  .settings(
+    fork := true,
+    maintainer := "scalacenter",
+    scalaVersion := ScalaVersions.stable3,
+    libraryDependencies ++= Seq(
+      "org.scalameta" % "metals" % "0.11.9" cross(CrossVersion.for3Use2_13),
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % "0.15.0",
+      "org.http4s"                  %% "http4s-ember-server"      % "0.23.16",
+      "org.http4s"                  %% "http4s-ember-client"      % "0.23.16",
+      "org.http4s"                  %% "http4s-dsl"               % "0.23.16",
+      "org.http4s"                  %% "http4s-circe"             % "0.23.16",
+      "io.circe"                    %% "circe-generic"            % "0.14.2",
+      "org.scalameta"               %% "munit"                    % "0.7.29" % Test,
+      "com.evolutiongaming"         %% "scache"                   % "4.2.3",
+      "org.typelevel"               %% "munit-cats-effect-3"      % "1.0.6" % Test
+    )
+  )
+  .enablePlugins(JavaServerAppPackaging)
+  .dependsOn(api.jvm(ScalaVersions.old3))
 
 lazy val dockerOrg = "scalacenter"
 
@@ -148,10 +178,9 @@ lazy val server = project
   .settings(loggingAndTest)
   .settings(
     watchSources ++= (client / watchSources).value,
-    Compile / products += (client / Compile / npmUpdate / crossTarget).value / "out",
-    reStart := reStart.dependsOn(client / Compile / fastOptJS / webpack).evaluated,
-    fullOptJS / reStart := reStart.dependsOn(client / Compile / fullOptJS / webpack).evaluated,
-    Universal / packageBin := (Universal / packageBin).dependsOn(client / Compile / fullOptJS / webpack).value,
+    Compile / products += (client / baseDirectory).value / "dist",
+    fullLinkJS / reStart := reStart.dependsOn(client / Compile / fullLinkJS / yarnBuild).evaluated,
+    Universal / packageBin := (Universal / packageBin).dependsOn(client / Compile / fullLinkJS / yarnBuild).value,
     reStart / javaOptions += "-Xmx512m",
     maintainer := "scalacenter",
     libraryDependencies ++= Seq(
@@ -181,9 +210,8 @@ lazy val storage = project
   .settings(loggingAndTest)
   .settings(
     libraryDependencies ++= Seq(
+      "org.mongodb.scala" %% "mongo-scala-driver" % "4.7.0",
       "net.lingala.zip4j" % "zip4j" % "2.10.0",
-      "org.reactivemongo" %% "reactivemongo" % "1.0.10",
-      "org.reactivemongo" %% "reactivemongo-play-json-compat" % "1.0.10-play29",
     )
   )
   .dependsOn(api.jvm(ScalaVersions.jvm), utils, instrumentation)
@@ -200,59 +228,60 @@ val webpackProdConf = Def.setting {
   Some(webpackDir.value / "webpack-prod.config.js")
 }
 
+import org.scalajs.linker.interface.ModuleSplitStyle
+
 lazy val client = project
+  .enablePlugins(ScalablyTypedConverterExternalNpmPlugin)
   .settings(baseNoCrossSettings)
   .settings(baseJsSettings)
   .settings(
-    webpack / version := "3.5.5",
-    startWebpackDevServer / version := "2.7.1",
-    fastOptJS / webpackConfigFile := webpackDevConf.value,
-    fullOptJS / webpackConfigFile := webpackProdConf.value,
-    webpackMonitoredDirectories += (Compile / resourceDirectory).value,
-    webpackResources := webpackDir.value * "*.js",
-    webpackMonitoredFiles / includeFilter := "*",
-    useYarn := true,
-    fastOptJS / webpackBundlingMode := BundlingMode.LibraryOnly(),
-    fullOptJS / webpackBundlingMode := BundlingMode.Application,
+    externalNpm := {
+      scala.sys.process.Process("yarn", baseDirectory.value.getParentFile)! ProcessLogger(line => ())
+      baseDirectory.value.getParentFile
+    },
+    stFlavour := Flavour.ScalajsReact,
+    Compile / fastLinkJS / scalaJSLinkerConfig := {
+      val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value.toURI()
+      scalaJSLinkerConfig.value.withModuleKind(ModuleKind.ESModule)
+        .withRelativizeSourceMapBase(Some(dir))
+    },
+    Compile / fullLinkJS / scalaJSLinkerConfig := {
+      scalaJSLinkerConfig.value.withModuleKind(ModuleKind.ESModule)
+    },
+    fastLinkOutputDir := linkerOutputDirectory((Compile / fastLinkJS).value).getAbsolutePath(),
+    fullLinkOutputDir := linkerOutputDirectory((Compile / fullLinkJS).value).getAbsolutePath(),
+    yarnBuild := {
+      scala.sys.process.Process("yarn build").!
+    },
     test := {},
     Test / loadedTestFrameworks := Map(),
-    Compile / npmDependencies ++= Seq(
-      "codemirror" -> "5.50.0",
-      "firacode" -> "1.205.0",
-      "font-awesome" -> "4.7.0",
-      "raven-js" -> "3.11.0",
-      "react" -> "16.7.0",
-      "react-dom" -> "16.7.0",
-      "typeface-roboto-slab" -> "0.0.35",
-    ),
-    Compile / npmDevDependencies ++= Seq(
-      "compression-webpack-plugin" -> "1.0.0",
-      "clean-webpack-plugin" -> "0.1.16",
-      "css-loader" -> "0.28.5",
-      "extract-text-webpack-plugin" -> "3.0.0",
-      "file-loader" -> "0.11.2",
-      "html-webpack-plugin" -> "2.30.1",
-      "node-sass" -> "4.14.1",
-      "resolve-url-loader" -> "2.1.0",
-      "sass-loader" -> "6.0.6",
-      "style-loader" -> "0.18.2",
-      "uglifyjs-webpack-plugin" -> "1.0.0",
-      "webpack-merge" -> "4.1.0",
-    ),
+    stIgnore := List(
+      "firacode", "font-awesome", "@sentry/browser", "@sentry/tracing",
+      "react", "react-dom", "typeface-roboto-slab", "source-map-support"
+      ),
+    stEnableScalaJsDefined := Selection.AllExcept(),
     libraryDependencies ++= Seq(
       "com.github.japgolly.scalajs-react" %%% "core" % "2.1.1",
       "com.github.japgolly.scalajs-react" %%% "extra" % "2.1.1",
     )
   )
-  .enablePlugins(ScalaJSPlugin, ScalaJSBundlerPlugin)
+  .enablePlugins(ScalaJSPlugin)
   .dependsOn(api.js(ScalaVersions.js))
+
+def linkerOutputDirectory(v: Attributed[org.scalajs.linker.interface.Report]): File = {
+  v.get(scalaJSLinkerOutputDirectory.key).getOrElse {
+    throw new MessageOnlyException(
+        "Linking report was not attributed with output directory. " +
+        "Please report this as a Scala.js bug.")
+  }
+}
 
 lazy val instrumentation = project
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
   .settings(
     libraryDependencies ++= Seq(
-      "org.scalameta" %% "scalameta" % "4.5.5",
+      "org.scalameta" %% "scalameta" % "4.6.0",
       "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0" % Test
     )
   )

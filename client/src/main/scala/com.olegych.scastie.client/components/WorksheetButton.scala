@@ -2,7 +2,9 @@ package com.olegych.scastie
 package client
 package components
 
-import japgolly.scalajs.react._, vdom.all._, extra._
+import japgolly.scalajs.react._
+
+import vdom.all._
 
 final case class WorksheetButton(
     hasWorksheetMode: Boolean,
@@ -33,7 +35,8 @@ object WorksheetButton {
       else "ON"
 
     li(
-      title := (if (props.hasWorksheetMode) s"Turn Worksheet mode $isWorksheetModeToggleLabel (evaluate and print each top level expression)"
+      title := (if (props.hasWorksheetMode)
+                  s"Turn Worksheet mode $isWorksheetModeToggleLabel (evaluate and print each top level expression)"
                 else "This configuration does not support Worksheet mode"),
       isWorksheetModeSelected,
       role := "button",

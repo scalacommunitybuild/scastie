@@ -1,7 +1,33 @@
 package com.olegych.scastie.client
 
 import com.olegych.scastie.api._
+import org.scalajs.dom.HTMLElement
+import org.scalajs.dom.{Position => _}
 import play.api.libs.json._
+
+sealed trait MetalsStatus {
+  val info: String
+}
+
+case object MetalsLoading extends MetalsStatus {
+  val info: String = "Compiler is loading"
+}
+
+case object MetalsReady extends MetalsStatus {
+  val info: String = "Metals is ready"
+}
+
+case object MetalsDisabled extends MetalsStatus {
+  val info: String = "Metals Disabled"
+}
+
+case class MetalsConfigurationError(msg: String) extends MetalsStatus {
+  val info: String = s"Unsupported Configuration: \n  $msg"
+}
+
+case class NetworkError(msg: String) extends MetalsStatus {
+  val info: String = s"Network Error: \n  $msg"
+}
 
 object SnippetState {
   implicit val formatSnippetState: OFormat[SnippetState] =
@@ -36,7 +62,7 @@ object ScastieState {
         scalaJsContent = None,
       ),
       user = None,
-      attachedDoms = AttachedDoms(Map()),
+      attachedDoms = Map(),
       inputs = Inputs.default,
       outputs = Outputs.default,
       status = StatusState.empty,
@@ -44,8 +70,8 @@ object ScastieState {
     )
   }
 
-  implicit val dontSerializeAttachedDoms: Format[AttachedDoms] =
-    dontSerialize[AttachedDoms](AttachedDoms(Map()))
+  implicit val dontSerializeAttachedDoms: Format[Map[String, HTMLElement]] =
+    dontSerialize[Map[String, HTMLElement]](Map())
 
   implicit val dontSerializeStatusState: Format[StatusState] =
     dontSerialize[StatusState](StatusState.empty)
@@ -55,6 +81,9 @@ object ScastieState {
 
   implicit val dontSerializeProgressStream: Format[EventStream[SnippetProgress]] =
     dontSerializeOption[EventStream[SnippetProgress]]
+
+  implicit val dontSerializeMetalsStatus: Format[MetalsStatus] =
+    dontSerialize[MetalsStatus](MetalsLoading)
 
   implicit val formatScastieState: OFormat[ScastieState] =
     Json.format[ScastieState]
@@ -75,10 +104,11 @@ case class ScastieState(
     inputsHasChanged: Boolean,
     snippetState: SnippetState,
     user: Option[User],
-    attachedDoms: AttachedDoms,
+    attachedDoms: Map[String, HTMLElement],
     inputs: Inputs,
     outputs: Outputs,
     status: StatusState,
+    metalsStatus: MetalsStatus = MetalsLoading,
     isEmbedded: Boolean = false,
     transient: Boolean = false,
 ) {
@@ -86,7 +116,7 @@ case class ScastieState(
   def loadSnippet: Boolean = snippetState.loadSnippet
 
   def copyAndSave(
-      attachedDoms: AttachedDoms = attachedDoms,
+      attachedDoms: Map[String, HTMLElement] = attachedDoms,
       view: View = view,
       isRunning: Boolean = isRunning,
       statusStream: Option[EventStream[StatusProgress]] = statusStream,
@@ -105,6 +135,7 @@ case class ScastieState(
       inputs: Inputs = inputs,
       outputs: Outputs = outputs,
       status: StatusState = status,
+      metalsStatus: MetalsStatus = metalsStatus,
       transient: Boolean = transient,
   ): ScastieState = {
     val state0 =
@@ -133,6 +164,7 @@ case class ScastieState(
         ),
         outputs = outputs,
         status = status,
+        metalsStatus = metalsStatus,
         isEmbedded = isEmbedded,
         transient = transient,
       )
@@ -170,6 +202,12 @@ case class ScastieState(
 
   def setTheme(dark: Boolean): ScastieState =
     copyAndSave(isDarkTheme = dark)
+
+  def setMetalsStatus(status: MetalsStatus): ScastieState =
+    copyAndSave(metalsStatus = status)
+
+  def toggleMetalsStatus: ScastieState =
+    copyAndSave(metalsStatus = if (metalsStatus != MetalsDisabled) MetalsDisabled else MetalsLoading)
 
   def toggleLineNumbers: ScastieState =
     copyAndSave(showLineNumbers = !showLineNumbers)
@@ -338,7 +376,7 @@ case class ScastieState(
 
   def scalaJsScriptLoaded: ScastieState = copyAndSave(scalaJsContent = None)
 
-  def resetScalajs: ScastieState = copyAndSave(attachedDoms = AttachedDoms(Map()))
+  def resetScalajs: ScastieState = copyAndSave(attachedDoms = Map())
 
   def clearOutputs: ScastieState = {
     copyAndSave(
