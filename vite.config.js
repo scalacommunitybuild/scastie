@@ -1,6 +1,8 @@
 import { spawnSync } from "child_process";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, splitVendorChunkPlugin } from "vite";
+import { plugin as mdPlugin } from 'vite-plugin-markdown';
+import scalaJSPlugin from '@scala-js/vite-plugin-scalajs';
 
 function isDev() {
   return process.env.NODE_ENV !== "production";
@@ -10,29 +12,6 @@ function emitEmbedded() {
   return process.env.MODE == "embed"
 }
 
-function printSbtTask(task) {
-  const args = ["-J-Xlog:all=error", "--error", "--batch", `print ${task}`];
-  const options = {
-    stdio: [
-      "pipe", // StdIn.
-      "pipe", // StdOut.
-      "inherit", // StdErr.
-    ],
-  };
-  const result = spawnSync("sbt", args, options);
-
-  if (result.error)
-    throw result.error;
-  if (result.status !== 0)
-    throw new Error(`sbt process failed with exit code ${result.status}`);
-  return result.stdout.toString('utf8').trim();
-}
-
-const linkOutputDir = isDev()
-  ? printSbtTask("fastLinkOutputDir")
-  : printSbtTask("fullLinkOutputDir");
-
-
 const root = path.resolve('client/src/main/resources', (isDev() ? 'dev' : 'prod'))
 
 const embeddedOptions = {
@@ -40,10 +19,15 @@ const embeddedOptions = {
     embedded: path.resolve(root, 'embedded.js')
   },
   output: {
-    entryFileNames: "[name].js",
-    assetFileNames: "assets/[name].[ext]",
-    format: "es"
+    entryFileNames: "embedded/[name].js",
+    assetFileNames: "embedded/[name].[ext]"
   }
+}
+
+const embeddedLibrary = {
+  entry: path.resolve(root, 'embedded.js'),
+  name: "scastie",
+  formats: ['umd'],
 }
 
 const websiteOptions = {
@@ -51,8 +35,8 @@ const websiteOptions = {
     app: path.resolve(root, 'index.html')
   },
   output: {
-    entryFileNames: "[name].js",
-    assetFileNames: "assets/[name].[ext]"
+    entryFileNames: "[name]-[hash].js",
+    assetFileNames: "assets/[name]-[hash].[ext]"
   }
 }
 
@@ -64,10 +48,10 @@ if (!isDev()) {
 
 const proxy = {
   "/metals": {
-    target: "http://localhost:8000"
+    target: "http://0.0.0.0:8000"
   },
   "/": {
-    target: "http://localhost:9000",
+    target: "http://0.0.0.0:9000",
     bypass: function(req, res, proxyOptions) {
       // regex matching snippet ids
       const snippet = /(\/[A-Za-z0-9]{22}|\/[A-Za-z0-9]{22}\/([A-Za-z0-9])*[/(0-9)*])/;
@@ -94,17 +78,30 @@ const proxy = {
 }
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': `"${process.env.NODE_ENV}"`,
+    'process.env.MODE': `"${process.env.MODE}"`
+  },
   root: root,
   base: isDev() ? '' : '/public/',
+  plugins: [
+    scalaJSPlugin({
+      projectID: 'client'
+    }),
+    splitVendorChunkPlugin(),
+    mdPlugin({
+      mode: ['html']
+    }),
+  ],
   resolve: {
     alias: [
       {
-        find: '@linkOutputDir',
-        replacement: linkOutputDir,
-      },
-      {
         find: '@resources',
         replacement: path.resolve(__dirname, 'client', 'src', 'main', 'resources'),
+      },
+      {
+        find: '@scastieRoot',
+        replacement: path.resolve(__dirname),
       }
     ],
   },
@@ -112,6 +109,9 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'client', 'dist', 'public'),
     rollupOptions: emitEmbedded() ? embeddedOptions : websiteOptions,
     emptyOutDir: !emitEmbedded(),
+    // Embedded is used as a library, in order to support current scastie embedded users.
+    // It outputs 'umd' module which allows to use <script> tag without specifying its type to "module"
+    lib: emitEmbedded() ? embeddedLibrary : null,
   },
   css: {
     devSourcemap: true,

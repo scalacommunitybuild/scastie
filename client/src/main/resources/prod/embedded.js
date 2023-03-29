@@ -1,8 +1,8 @@
 import '@resources/sass/embed-main.scss'
-import { scastie } from '@linkOutputDir/main.js'
+import { scastie } from 'scalajs:main.js'
 
 window.ScastieSettings = {
   defaultServerUrl: "https://scastie.scala-lang.org"
 };
 
-window.scastie = scastie;
+export default scastie;

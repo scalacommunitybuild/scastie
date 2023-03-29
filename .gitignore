@@ -23,3 +23,6 @@ metals.sbt
 .metals
 .vscode
 client/dist
+vite.config.js.*
+generated-scripts*
+dump*

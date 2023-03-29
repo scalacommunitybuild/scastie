@@ -1,6 +1,8 @@
 import scala.sys.process.ProcessLogger
-import SbtShared._
+
 import com.typesafe.sbt.SbtNativePackager.Universal
+import org.scalajs.linker.interface.ModuleSplitStyle
+import SbtShared._
 
 def akka(module: String) = "com.typesafe.akka" %% ("akka-" + module) % "2.6.19"
 
@@ -8,9 +10,6 @@ val akkaHttpVersion = "10.2.9"
 
 addCommandAlias("startAll", "sbtRunner/reStart;server/reStart;metalsRunner/reStart;client/fastLinkJS")
 addCommandAlias("startAllProd", "sbtRunner/reStart;metalsRunner/reStart;server/fullLinkJS/reStart")
-
-val fastLinkOutputDir = taskKey[String]("output directory for `yarn dev`")
-val fullLinkOutputDir = taskKey[String]("output directory for `yarn build`")
 
 val yarnBuild = taskKey[Unit]("builds es modules with `yarn build`")
 
@@ -28,32 +27,30 @@ lazy val scastie = project
       server,
       storage,
       utils,
-      metalsRunner,
-    ).map(_.project)):_*
+      metalsRunner
+    ).map(_.project)): _*
   )
   .settings(baseSettings)
   .settings(
     cachedCiTestFull := {
-      val _ = cachedCiTestFull.value
-      val __ = (sbtRunner / docker / dockerfile).value
+      val _   = cachedCiTestFull.value
+      val __  = (sbtRunner / docker / dockerfile).value
       val ___ = (server / Universal / packageBin).value
-    },
+    }
   )
   .settings(Deployment.settings(server, sbtRunner, metalsRunner))
 
-lazy val testSettings =
-  Seq(
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.12" % Test
-  )
+lazy val testSettings = Seq(
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % Test
+)
 
-lazy val loggingAndTest =
-  Seq(
-    libraryDependencies ++= Seq(
-      "ch.qos.logback" % "logback-classic" % "1.2.11",
-      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.4",
-      "io.sentry" % "sentry-logback" % "6.4.2"
-    )
-  ) ++ testSettings
+lazy val loggingAndTest = Seq(
+  libraryDependencies ++= Seq(
+    "ch.qos.logback"              % "logback-classic" % "1.4.6",
+    "com.typesafe.scala-logging" %% "scala-logging"   % "3.9.5",
+    "io.sentry"                   % "sentry-logback"  % "6.16.0"
+  )
+) ++ testSettings
 
 lazy val utils = project
   .in(file("utils"))
@@ -73,13 +70,13 @@ lazy val utils = project
   .dependsOn(api.jvm(ScalaVersions.jvm))
 
 lazy val runnerRuntimeDependencies = (api.projectRefs ++ runtimeScala.projectRefs ++ Seq(
-    sbtScastie.project
-  )).map(_ / publishLocal)
+  sbtScastie.project
+)).map(_ / publishLocal)
 
 lazy val runnerRuntimeDependenciesInTest = Seq(
-  assembly / test := {},
-  Test / test := (Test / test).dependsOn(runnerRuntimeDependencies: _*).value,
-  Test / testOnly := (Test / testOnly).dependsOn(runnerRuntimeDependencies: _*).evaluated,
+  assembly / test  := {},
+  Test / test      := (Test / test).dependsOn(runnerRuntimeDependencies: _*).value,
+  Test / testOnly  := (Test / testOnly).dependsOn(runnerRuntimeDependencies: _*).evaluated,
   Test / testQuick := (Test / testQuick).dependsOn(runnerRuntimeDependencies: _*).evaluated
 )
 
@@ -92,37 +89,54 @@ lazy val smallRunnerRuntimeDependenciesInTest = {
     sbtScastie
   ).map(_ / publishLocal)
   Seq(
-    assembly / test := {},
-    Test / test := (Test / test).dependsOn(smallRunnerRuntimeDependencies: _*).value,
-    Test / testOnly := (Test / testOnly).dependsOn(smallRunnerRuntimeDependencies: _*).evaluated,
+    assembly / test  := {},
+    Test / test      := (Test / test).dependsOn(smallRunnerRuntimeDependencies: _*).value,
+    Test / testOnly  := (Test / testOnly).dependsOn(smallRunnerRuntimeDependencies: _*).evaluated,
     Test / testQuick := (Test / testQuick).dependsOn(smallRunnerRuntimeDependencies: _*).evaluated
   )
 }
+
+lazy val dockerOrg = "scalacenter"
 
 lazy val metalsRunner = project
   .in(file("metals-runner"))
   .settings(baseNoCrossSettings)
   .settings(
-    fork := true,
-    maintainer := "scalacenter",
+    fork := true, // we need to fork it, as it is dynamically loading classes, and they persist in the sbt shell instance
+    docker / imageNames := Seq(
+      ImageName(namespace = Some(dockerOrg), repository = "scastie-metals-runner", tag = Some(gitHashNow)),
+      ImageName(namespace = Some(dockerOrg), repository = "scastie-metals-runner", tag = Some("latest"))
+    ),
+    executableScriptName := "server",
+    javacOptions ++= Seq("-Xms1G", "-Xmx4G", "-XX:+CrashOnOutOfMemoryError"),
+    docker / dockerfile := Def
+      .task {
+        DockerHelper.javaProject(
+          baseDirectory = (ThisBuild / baseDirectory).value.toPath,
+          organization = organization.value,
+          artifactZip = (Universal / packageBin).value.toPath,
+          configPath = (baseDirectory.value / "src" / "main" / "resources" / "application.conf").toPath
+        )
+      }
+      .dependsOn(runnerRuntimeDependencies: _*)
+      .value,
+    maintainer   := "scalacenter",
     scalaVersion := ScalaVersions.stable3,
     libraryDependencies ++= Seq(
-      "org.scalameta" % "metals" % "0.11.9" cross(CrossVersion.for3Use2_13),
-      "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % "0.15.0",
-      "org.http4s"                  %% "http4s-ember-server"      % "0.23.16",
-      "org.http4s"                  %% "http4s-ember-client"      % "0.23.16",
-      "org.http4s"                  %% "http4s-dsl"               % "0.23.16",
-      "org.http4s"                  %% "http4s-circe"             % "0.23.16",
-      "io.circe"                    %% "circe-generic"            % "0.14.2",
-      "org.scalameta"               %% "munit"                    % "0.7.29" % Test,
-      "com.evolutiongaming"         %% "scache"                   % "4.2.3",
-      "org.typelevel"               %% "munit-cats-effect-3"      % "1.0.6" % Test
+      "org.scalameta"        % "metals"              % "0.11.11" cross (CrossVersion.for3Use2_13),
+      "org.eclipse.lsp4j"    % "org.eclipse.lsp4j"   % "0.20.1",
+      "org.http4s"          %% "http4s-ember-server" % "0.23.18",
+      "org.http4s"          %% "http4s-ember-client" % "0.23.18",
+      "org.http4s"          %% "http4s-dsl"          % "0.23.18",
+      "org.http4s"          %% "http4s-circe"        % "0.23.18",
+      "io.circe"            %% "circe-generic"       % "0.14.5",
+      "com.evolutiongaming" %% "scache"              % "4.2.3",
+      "org.scalameta"       %% "munit"               % "0.7.29" % Test,
+      "org.typelevel"       %% "munit-cats-effect-3" % "1.0.7"  % Test
     )
   )
-  .enablePlugins(JavaServerAppPackaging)
+  .enablePlugins(JavaServerAppPackaging, sbtdocker.DockerPlugin)
   .dependsOn(api.jvm(ScalaVersions.old3))
-
-lazy val dockerOrg = "scalacenter"
 
 lazy val sbtRunner = project
   .in(file("sbt-runner"))
@@ -137,16 +151,14 @@ lazy val sbtRunner = project
       akka("testkit") % Test,
       akka("cluster"),
       akka("slf4j"),
-      "org.scalameta" %% "scalafmt-core" % "3.5.8"
+      "org.scalameta" %% "scalafmt-core" % "3.7.1"
     ),
     docker / imageNames := Seq(
-      ImageName(
-        namespace = Some(dockerOrg),
-        repository = "scastie-sbt-runner",
-        tag = Some(gitHashNow)
-      )
+      ImageName(namespace = Some(dockerOrg), repository = "scastie-sbt-runner", tag = Some(gitHashNow)),
+      ImageName(namespace = Some(dockerOrg), repository = "scastie-sbt-runner", tag = Some("latest"))
     ),
-    docker / buildOptions := (docker / buildOptions).value.copy(additionalArguments = List("--add-host", "jenkins.scala-sbt.org:127.0.0.1")),
+    docker / buildOptions := (docker / buildOptions).value
+      .copy(additionalArguments = List("--add-host", "jenkins.scala-sbt.org:127.0.0.1")),
     docker / dockerfile := Def
       .task {
         DockerHelper(
@@ -156,7 +168,7 @@ lazy val sbtRunner = project
           organization = organization.value,
           artifact = assembly.value.toPath,
           sbtScastie = (sbtScastie / moduleName).value,
-          sbtVersion = sbtVersion.value,
+          sbtVersion = sbtVersion.value
         )
       }
       .dependsOn(runnerRuntimeDependencies: _*)
@@ -179,18 +191,18 @@ lazy val server = project
   .settings(
     watchSources ++= (client / watchSources).value,
     Compile / products += (client / baseDirectory).value / "dist",
-    fullLinkJS / reStart := reStart.dependsOn(client / Compile / fullLinkJS / yarnBuild).evaluated,
+    fullLinkJS / reStart   := reStart.dependsOn(client / Compile / fullLinkJS / yarnBuild).evaluated,
     Universal / packageBin := (Universal / packageBin).dependsOn(client / Compile / fullLinkJS / yarnBuild).value,
     reStart / javaOptions += "-Xmx512m",
     maintainer := "scalacenter",
     libraryDependencies ++= Seq(
-      "org.apache.commons" % "commons-text" % "1.9",
-      "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
-      "com.softwaremill.akka-http-session" %% "core" % "0.7.0",
-      "ch.megard" %% "akka-http-cors" % "1.1.3",
+      "org.apache.commons"                  % "commons-text"   % "1.10.0",
+      "com.typesafe.akka"                  %% "akka-http"      % akkaHttpVersion,
+      "com.softwaremill.akka-http-session" %% "core"           % "0.7.0",
+      "ch.megard"                          %% "akka-http-cors" % "1.2.0",
       akka("cluster"),
       akka("slf4j"),
-      akka("testkit") % Test,
+      akka("testkit")      % Test,
       "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion % Test
     )
   )
@@ -209,26 +221,13 @@ lazy val storage = project
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
   .settings(
+    scalacOptions += "-Ywarn-unused",
     libraryDependencies ++= Seq(
-      "org.mongodb.scala" %% "mongo-scala-driver" % "4.7.0",
-      "net.lingala.zip4j" % "zip4j" % "2.10.0",
+      "org.mongodb.scala" %% "mongo-scala-driver" % "4.9.0",
+      "net.lingala.zip4j"  % "zip4j"              % "2.11.5"
     )
   )
   .dependsOn(api.jvm(ScalaVersions.jvm), utils, instrumentation)
-
-val webpackDir = Def.setting {
-  (ThisProject / baseDirectory).value / "webpack"
-}
-
-val webpackDevConf = Def.setting {
-  Some(webpackDir.value / "webpack-dev.config.js")
-}
-
-val webpackProdConf = Def.setting {
-  Some(webpackDir.value / "webpack-prod.config.js")
-}
-
-import org.scalajs.linker.interface.ModuleSplitStyle
 
 lazy val client = project
   .enablePlugins(ScalablyTypedConverterExternalNpmPlugin)
@@ -236,58 +235,52 @@ lazy val client = project
   .settings(baseJsSettings)
   .settings(
     externalNpm := {
-      scala.sys.process.Process("yarn", baseDirectory.value.getParentFile)! ProcessLogger(line => ())
+      scala.sys.process.Process("yarn", baseDirectory.value.getParentFile) ! ProcessLogger(line => ())
       baseDirectory.value.getParentFile
     },
     stFlavour := Flavour.ScalajsReact,
     Compile / fastLinkJS / scalaJSLinkerConfig := {
       val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value.toURI()
-      scalaJSLinkerConfig.value.withModuleKind(ModuleKind.ESModule)
+      scalaJSLinkerConfig.value
+        .withModuleKind(ModuleKind.ESModule)
         .withRelativizeSourceMapBase(Some(dir))
     },
     Compile / fullLinkJS / scalaJSLinkerConfig := {
       scalaJSLinkerConfig.value.withModuleKind(ModuleKind.ESModule)
     },
-    fastLinkOutputDir := linkerOutputDirectory((Compile / fastLinkJS).value).getAbsolutePath(),
-    fullLinkOutputDir := linkerOutputDirectory((Compile / fullLinkJS).value).getAbsolutePath(),
     yarnBuild := {
       scala.sys.process.Process("yarn build").!
     },
-    test := {},
+    test                        := {},
     Test / loadedTestFrameworks := Map(),
     stIgnore := List(
-      "firacode", "font-awesome", "@sentry/browser", "@sentry/tracing",
-      "react", "react-dom", "typeface-roboto-slab", "source-map-support"
-      ),
-    stEnableScalaJsDefined := Selection.AllExcept(),
+      "@sentry/browser",
+      "@sentry/tracing",
+      "github-markdown-css",
+      "react",
+      "react-dom",
+      "source-map-support"
+    ),
     libraryDependencies ++= Seq(
-      "com.github.japgolly.scalajs-react" %%% "core" % "2.1.1",
-      "com.github.japgolly.scalajs-react" %%% "extra" % "2.1.1",
+      "com.github.japgolly.scalajs-react" %%% "core"  % "2.1.1",
+      "com.github.japgolly.scalajs-react" %%% "extra" % "2.1.1"
     )
   )
   .enablePlugins(ScalaJSPlugin)
   .dependsOn(api.js(ScalaVersions.js))
-
-def linkerOutputDirectory(v: Attributed[org.scalajs.linker.interface.Report]): File = {
-  v.get(scalaJSLinkerOutputDirectory.key).getOrElse {
-    throw new MessageOnlyException(
-        "Linking report was not attributed with output directory. " +
-        "Please report this as a Scala.js bug.")
-  }
-}
 
 lazy val instrumentation = project
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
   .settings(
     libraryDependencies ++= Seq(
-      "org.scalameta" %% "scalameta" % "4.6.0",
+      "org.scalameta"                 %% "scalameta" % "4.7.6",
       "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0" % Test
     )
   )
   .dependsOn(api.jvm(ScalaVersions.jvm), utils)
 
-lazy val api = SbtShared.api
+lazy val api          = SbtShared.api
 lazy val runtimeScala = SbtShared.`runtime-scala`
 
 lazy val sbtScastie = project
@@ -295,8 +288,7 @@ lazy val sbtScastie = project
   .settings(orgSettings)
   .settings(
     moduleName := "sbt-scastie",
-    sbtPlugin := true
+    sbtPlugin  := true
   )
   .settings(version := versionRuntime)
   .dependsOn(api.jvm(ScalaVersions.sbt))
-

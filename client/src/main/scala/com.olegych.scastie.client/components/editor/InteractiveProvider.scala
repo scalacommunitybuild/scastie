@@ -95,13 +95,11 @@ case class InteractiveProvider(props: CodeEditor) {
     maybeJsonText.flatMap(jsonText => {
       Json.parse(jsonText).asOpt[Either[api.FailureType, B]] match {
         case None =>
-          println(s"Parsing error for text: $jsonText")
           None
         case Some(Left(api.PresentationCompilerFailure(msg))) =>
           props.setMetalsStatus(MetalsConfigurationError(msg)).runNow()
           None
         case Some(Left(api.NoResult(msg))) =>
-          println(s"No hover for given position: $msg")
           None
         case Some(Right(value)) =>
           props.setMetalsStatus(MetalsReady)
@@ -205,6 +203,7 @@ case class InteractiveProvider(props: CodeEditor) {
 
   private val hovers = hoverTooltip((view, pos, side) => ifSupported {
     val request = toLSPRequest(view.state.doc.toString(), pos.toInt)
+
     makeRequest(request, "hover").map(maybeText =>
       parseMetalsResponse[api.HoverDTO](maybeText).map { hover =>
         val hoverF: js.Function1[EditorView, TooltipView] = view => {
@@ -212,13 +211,17 @@ case class InteractiveProvider(props: CodeEditor) {
           node.innerHTML = InteractiveProvider.marked(hover.content)
           TooltipView(node.domToHtml.get)
         }
-        Tooltip(hoverF, pos)
+
+        view.state.wordAt(pos) match {
+          case range: SelectionRange => Tooltip(hoverF, range.from)
+            .setEnd(range.to)
+          case _ => Tooltip(hoverF, pos)
+        }
       }
     )
   }.map(_.getOrElse(null)).toJSPromise)
 
   private val autocompletionConfig = CompletionConfig()
-    .setCloseOnBlur(false)
     .setOverrideVarargs(completionsF)
     .setIcons(true)
     .setDefaultKeymap(true)
