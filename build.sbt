@@ -41,14 +41,14 @@ lazy val scastie = project
   .settings(Deployment.settings(server, sbtRunner, metalsRunner))
 
 lazy val testSettings = Seq(
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % Test
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.16" % Test
 )
 
 lazy val loggingAndTest = Seq(
   libraryDependencies ++= Seq(
-    "ch.qos.logback"              % "logback-classic" % "1.4.6",
+    "ch.qos.logback"              % "logback-classic" % "1.4.7",
     "com.typesafe.scala-logging" %% "scala-logging"   % "3.9.5",
-    "io.sentry"                   % "sentry-logback"  % "6.16.0"
+    "io.sentry"                   % "sentry-logback"  % "6.19.1"
   )
 ) ++ testSettings
 
@@ -108,7 +108,7 @@ lazy val metalsRunner = project
       ImageName(namespace = Some(dockerOrg), repository = "scastie-metals-runner", tag = Some("latest"))
     ),
     executableScriptName := "server",
-    javacOptions ++= Seq("-Xms1G", "-Xmx4G", "-XX:+CrashOnOutOfMemoryError"),
+    javacOptions ++= Seq("-Xms1G", "-Xmx12G", "-XX:+CrashOnOutOfMemoryError"),
     docker / dockerfile := Def
       .task {
         DockerHelper.javaProject(
@@ -123,12 +123,12 @@ lazy val metalsRunner = project
     maintainer   := "scalacenter",
     scalaVersion := ScalaVersions.stable3,
     libraryDependencies ++= Seq(
-      "org.scalameta"        % "metals"              % "0.11.11" cross (CrossVersion.for3Use2_13),
-      "org.eclipse.lsp4j"    % "org.eclipse.lsp4j"   % "0.20.1",
-      "org.http4s"          %% "http4s-ember-server" % "0.23.18",
-      "org.http4s"          %% "http4s-ember-client" % "0.23.18",
-      "org.http4s"          %% "http4s-dsl"          % "0.23.18",
-      "org.http4s"          %% "http4s-circe"        % "0.23.18",
+      "org.scalameta"        % "metals"              % "0.11.12" cross (CrossVersion.for3Use2_13),
+      "org.eclipse.lsp4j"    % "org.eclipse.lsp4j"   % "0.21.0",
+      "org.http4s"          %% "http4s-ember-server" % "0.23.19",
+      "org.http4s"          %% "http4s-ember-client" % "0.23.19",
+      "org.http4s"          %% "http4s-dsl"          % "0.23.19",
+      "org.http4s"          %% "http4s-circe"        % "0.23.19",
       "io.circe"            %% "circe-generic"       % "0.14.5",
       "com.evolutiongaming" %% "scache"              % "4.2.3",
       "org.scalameta"       %% "munit"               % "0.7.29" % Test,
@@ -223,7 +223,7 @@ lazy val storage = project
   .settings(
     scalacOptions += "-Ywarn-unused",
     libraryDependencies ++= Seq(
-      "org.mongodb.scala" %% "mongo-scala-driver" % "4.9.0",
+      "org.mongodb.scala" %% "mongo-scala-driver" % "4.9.1",
       "net.lingala.zip4j"  % "zip4j"              % "2.11.5"
     )
   )
@@ -274,7 +274,7 @@ lazy val instrumentation = project
   .settings(loggingAndTest)
   .settings(
     libraryDependencies ++= Seq(
-      "org.scalameta"                 %% "scalameta" % "4.7.6",
+      "org.scalameta"                 %% "scalameta" % "4.7.7",
       "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0" % Test
     )
   )

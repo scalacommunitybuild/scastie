@@ -20,11 +20,11 @@ object SbtShared {
   object ScalaVersions {
     val latest210 = "2.10.7"
     val latest211 = "2.11.12"
-    val latest212 = "2.12.17"
-    val latest213 = "2.13.10"
+    val latest212 = "2.12.18"
+    val latest213 = "2.13.11"
     val old3      = "3.0.2"
-    val stable3   = "3.2.2"
-    val latest3   = "3.3.0-RC3"
+    val stable3   = "3.3.0"
+    val latest3   = "3.3.1-RC1"
     val js        = latest213
     val sbt       = latest212
     val jvm       = latest213
@@ -33,7 +33,7 @@ object SbtShared {
   }
 
   object ScalaJSVersions {
-    val current = "1.12.0"
+    val current = "1.13.1"
   }
 
   val runtimeProjectName = "runtime-scala"
@@ -111,7 +111,7 @@ object SbtShared {
   lazy val baseJsSettings = Seq(
     test := {},
     libraryDependencies ++= Seq(
-      "org.scala-js" %%% "scalajs-dom"               % "2.4.0",
+      "org.scala-js" %%% "scalajs-dom"               % "2.6.0",
       "org.scala-js" %%% "scalajs-java-securerandom" % "1.0.0" cross (CrossVersion.for3Use2_13)
     )
   )
@@ -184,13 +184,9 @@ object SbtShared {
     *   scalajvm-3 is already configured by sbt-projectmatrix for scala 3 sub projects
     */
   private def scala2MajorSourceDirs(scalaSource: File, axisValues: Seq[VirtualAxis]): Seq[File] = {
-    val platform = (axisValues collect { case pv: VirtualAxis.PlatformAxis =>
-      pv.directorySuffix
-    }).head
+    val platform = (axisValues collect { case pv: VirtualAxis.PlatformAxis => pv.directorySuffix }).head
 
-    val svMajors = (axisValues collect { case sv: VirtualAxis.ScalaVersionAxis =>
-      sv.value.head
-    }).filter(_ == '2')
+    val svMajors = (axisValues collect { case sv: VirtualAxis.ScalaVersionAxis => sv.value.head }).filter(_ == '2')
 
     svMajors.map(v => scalaSource.getParentFile / s"scala$platform-$v")
   }
