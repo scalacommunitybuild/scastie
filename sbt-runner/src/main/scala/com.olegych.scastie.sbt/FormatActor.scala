@@ -8,7 +8,7 @@ import com.olegych.scastie.api.ScalaTarget
 import org.scalafmt.Formatted
 import org.scalafmt.Scalafmt
 import org.scalafmt.config.ScalafmtConfig
-import org.scalafmt.config.ScalafmtRunner
+import org.scalafmt.config.RunnerSettings
 import org.scalafmt.config.NamedDialect
 import org.slf4j.LoggerFactory
 
@@ -23,9 +23,9 @@ object FormatActor {
 
       val runner = {
         if (isWorksheetMode && scalaTarget.hasWorksheetMode)
-          ScalafmtRunner.sbt
+          RunnerSettings.sbt
         else
-          ScalafmtRunner.default
+          RunnerSettings.default
       }.withDialect(dialect)
 
       ScalafmtConfig.default.copy(runner = runner)
