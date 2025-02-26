@@ -26,7 +26,7 @@ object FormatActor {
           RunnerSettings.sbt
         else
           RunnerSettings.default
-      }.withDialect(dialect)
+      }.withDialect(NamedDialect(NamedDialect.getName(dialect).get, dialect))
 
       ScalafmtConfig.default.copy(runner = runner)
     }
