@@ -5,8 +5,8 @@ import com.olegych.scastie.buildinfo.BuildInfo
 object ScalaVersions {
   def suggestedScalaVersions(tpe: ScalaTargetType): List[String] = {
     val versions = tpe match {
-      case ScalaTargetType.Scala3 => List(BuildInfo.stable3, BuildInfo.latest3)
-      case ScalaTargetType.JS     => List(BuildInfo.stable3, BuildInfo.latest213, BuildInfo.latest212)
+      case ScalaTargetType.Scala3 => List(BuildInfo.stableLTS, BuildInfo.stableNext)
+      case ScalaTargetType.JS     => List(BuildInfo.stableLTS, BuildInfo.stableNext, BuildInfo.latest213, BuildInfo.latest212)
       case _                      => List(BuildInfo.latest213, BuildInfo.latest212)
     }
     versions.distinct
@@ -16,8 +16,25 @@ object ScalaVersions {
     val versions = tpe match {
       case ScalaTargetType.Scala3 =>
         List(
-          BuildInfo.stable3,
-          BuildInfo.latest3,
+          BuildInfo.latestNext,
+          BuildInfo.stableNext,
+          BuildInfo.latestLTS,
+          BuildInfo.stableLTS,
+          "3.6.2",
+          // "3.6.1", // hotfix to 3.6.0 - abandoned
+          // "3.6.0", Bad release
+          "3.5.2",
+          "3.5.1",
+          "3.5.0",
+          "3.4.3",
+          "3.4.2",
+          "3.4.1",
+          "3.4.0",
+          "3.3.4",
+          "3.3.3",
+          // "3.3.2", Bad release
+          "3.3.1",
+          "3.3.0",
           "3.2.2",
           "3.2.1",
           "3.2.0",
@@ -34,6 +51,11 @@ object ScalaVersions {
       case _ =>
         List(
           BuildInfo.latest213,
+          "2.13.15",
+          "2.13.14",
+          "2.13.13",
+          "2.13.12",
+          "2.13.11",
           "2.13.10",
           "2.13.9",
           "2.13.8",
@@ -46,6 +68,8 @@ object ScalaVersions {
           "2.13.1",
           "2.13.0",
           BuildInfo.latest212,
+          "2.12.19",
+          "2.12.18",
           "2.12.17",
           "2.12.16",
           "2.12.15",

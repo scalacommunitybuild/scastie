@@ -123,7 +123,7 @@ class SbtActorTest() extends TestKit(ActorSystem("SbtActorTest")) with ImplicitS
   test("Scala.js 3 support") {
     val scalaJs =
       Inputs.default.copy(code = "1 + 1",
-                          target = ScalaTarget.Js.default.copy(scalaVersion = com.olegych.scastie.buildinfo.BuildInfo.latest3))
+                          target = ScalaTarget.Js.default.copy(scalaVersion = com.olegych.scastie.buildinfo.BuildInfo.latestLTS))
     run(scalaJs)(_.isDone)
   }
 
@@ -214,6 +214,24 @@ class SbtActorTest() extends TestKit(ActorSystem("SbtActorTest")) with ImplicitS
 
   test("#258 instrumentation with variable t") {
     runCode("val t = 1; t")(_.instrumentations.nonEmpty)
+  }
+
+  test("last line comment should not fail compilation in worksheet Scala 2") {
+    val dotty = Inputs.default.copy(
+      code = s"""|println("Hello world!")
+                 |// test comment""".stripMargin,
+      target = ScalaTarget.Jvm.default,
+    )
+    run(dotty)(assertUserOutput("Hello world!"))
+  }
+
+  test("last line comment should not fail compilation in worksheet Scala 3") {
+    val dotty = Inputs.default.copy(
+      code = s"""|println("Hello world!")
+                 |// test comment""".stripMargin,
+      target = ScalaTarget.Scala3.default,
+    )
+    run(dotty)(assertUserOutput("Hello world!"))
   }
 
   test("hide Playground from types") {

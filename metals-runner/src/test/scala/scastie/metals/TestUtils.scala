@@ -21,8 +21,9 @@ object TestUtils extends Assertions with CatsEffectAssertions {
 
   type DependencyForVersion = ScalaTarget => ScalaDependency
 
-  val testTargets = List(BuildInfo.latest3, BuildInfo.stable3).map(ScalaTarget.Scala3.apply) ++
-    List(BuildInfo.latest213, BuildInfo.latest212).map(ScalaTarget.Jvm.apply)
+  val testTargets =
+    List(BuildInfo.latestLTS, BuildInfo.stableLTS, BuildInfo.latestNext).map(ScalaTarget.Scala3.apply) ++
+      List(BuildInfo.latest213, BuildInfo.latest212).map(ScalaTarget.Jvm.apply)
 
   val unsupportedVersions = List(BuildInfo.latest211, BuildInfo.latest210).map(ScalaTarget.Jvm.apply)
 
@@ -55,7 +56,7 @@ object TestUtils extends Assertions with CatsEffectAssertions {
     compat: Map[String, Either[FailureType, Set[String]]] = Map()
   ): IO[List[Unit]] = testTargets.traverse(scalaTarget =>
     val request = createRequest(scalaTarget, dependencies, code)
-    val comp    = server.complete(request).map(_.getItems.asScala.map(_.getLabel).toSet).value
+    val comp    = server.complete(request).map(_.items.map(_.label)).value
     assertIO(comp, getCompat(scalaTarget, compat, expected), Left(NoResult(s"Failed for target $scalaTarget")))
   )
 
@@ -102,8 +103,8 @@ object TestUtils extends Assertions with CatsEffectAssertions {
     compat: Map[String, List[Either[FailureType, String]]] = Map()
   ): IO[List[Unit]] = testTargets.traverse(scalaTarget =>
     val request = createRequest(scalaTarget, dependencies, code)
-    val comp = server.complete(request).fold(_ => Set(), _.toSimpleScalaList).flatMap { cmps =>
-      cmps
+    val comp = server.complete(request).getOrElse(ScalaCompletionList(Set(), false)).flatMap { cmps =>
+      cmps.items
         .map { cmp =>
           val infoRequest = CompletionInfoRequest(request._1, cmp)
           server.completionInfo(infoRequest).value

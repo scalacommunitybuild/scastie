@@ -9,7 +9,6 @@ import org.scalajs.dom.Element
 import org.scalajs.dom.HTMLElement
 import typings.codemirrorAutocomplete.mod._
 import typings.codemirrorCommands.mod._
-import typings.codemirrorLanguage.mod
 import typings.codemirrorLanguage.mod._
 import typings.codemirrorLint.codemirrorLintStrings
 import typings.codemirrorLint.mod._
@@ -55,7 +54,10 @@ object CodeEditor {
 
   private def init(props: CodeEditor, ref: Ref.Simple[Element], editorView: UseStateF[CallbackTo, EditorView]): Callback =
     ref.foreachCB(divRef => {
+
+      val syntaxHighlighting = new SyntaxHighlightingPlugin(editorView)
       val extensions = js.Array[Any](
+        Editor.editorTheme.of(props.codemirrorTheme),
         lineNumbers(),
         highlightSpecialChars(),
         history(),
@@ -68,6 +70,7 @@ object CodeEditor {
         rectangularSelection(),
         crosshairCursor(),
         highlightSelectionMatches(),
+        Editor.indentationMarkersExtension,
         keymap.of(closeBracketsKeymap ++ defaultKeymap ++ historyKeymap ++ foldKeymap ++ completionKeymap ++ lintKeymap ++ searchKeymap),
         StateField
           .define(StateFieldSpec[Set[api.Instrumentation]](_ => props.instrumentations, (value, _) => value))
@@ -75,18 +78,16 @@ object CodeEditor {
         DecorationProvider(props),
         EditorState.tabSize.of(2),
         Prec.highest(EditorKeymaps.keymapping(props)),
-        InteractiveProvider.interactive.of(
-          InteractiveProvider(props).extension
-        ),
-        mod.StreamLanguage.define(typings.codemirrorLegacyModes.modeClikeMod.scala_),
+        InteractiveProvider.interactive.of(InteractiveProvider(props).extension),
         SyntaxHighlightingTheme.highlightingTheme,
         lintGutter(),
         OnChangeHandler(props.codeChange),
+        syntaxHighlighting.syntaxHighlightingExtension.of(syntaxHighlighting.fallbackExtension),
       )
 
       val editorStateConfig = EditorStateConfig()
-        .setDoc(props.value)
         .setExtensions(extensions)
+        .setDoc(props.value)
 
       val editor = new EditorView(EditorViewConfig()
         .setState(EditorState.create(editorStateConfig))
@@ -100,7 +101,7 @@ object CodeEditor {
     val errors = props.compilationInfos
       .filter(prob => prob.line.isDefined && prob.line.get <= doc.lines)
       .map(problem => {
-        val line = problem.line.get
+        val line = problem.line.get max 1
         val lineInfo = doc.line(line)
 
         Diagnostic(lineInfo.from, HTMLFormatter.format(problem.message), parseSeverity(problem.severity), lineInfo.to)
@@ -111,6 +112,7 @@ object CodeEditor {
           })
 
       })
+
     val runtimeErrors = props.runtimeError.map(runtimeError => {
       val line = runtimeError.line.getOrElse(1).min(doc.lines.toInt)
       val lineInfo = doc.line(line)
@@ -140,7 +142,7 @@ object CodeEditor {
       editorView: UseStateF[CallbackTo, EditorView]
   ): Callback = {
     Editor.updateCode(editorView, props) >>
-      Editor.updateTheme(ref, prevProps, props) >>
+      Editor.updateTheme(ref, prevProps, props, editorView) >>
       updateDiagnostics(editorView, prevProps, props) >>
       DecorationProvider.updateDecorations(editorView, prevProps, props) >>
       InteractiveProvider.reloadMetalsConfiguration(editorView, prevProps, props)
@@ -152,7 +154,7 @@ object CodeEditor {
       .useRef(Ref[Element])
       .useRef[Option[CodeEditor]](None)
       .useState(new EditorView())
-      .useLayoutEffectOnMountBy((props, ref, prevProps, editorView) => init(props, ref.value, editorView))
+      .useEffectOnMountBy((props, ref, prevProps, editorView) => init(props, ref.value, editorView))
       .useEffectBy(
         (props, ref, prevProps, editorView) => updateComponent(props, ref.value, prevProps.value, editorView) >> prevProps.set(Some(props))
       )

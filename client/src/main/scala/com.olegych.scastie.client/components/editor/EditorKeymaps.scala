@@ -4,12 +4,15 @@ import org.scalajs.dom
 import typings.codemirrorState.anon
 import typings.codemirrorView.mod.EditorView
 import typings.codemirrorView.mod.{KeyBinding => JSKeyBinding}
+import typings.codemirrorCommands.mod._
+import typings.codemirrorAutocomplete.mod.acceptCompletion
+import typings.codemirrorState.mod._
 import com.olegych.scastie.client
 
 import scalajs.js
+import typings.codemirrorState.mod.TransactionSpec
 
 object EditorKeymaps {
-  import typings.codemirrorCommands.mod._
 
   private def presentationMode(editor: CodeEditor): Unit = {
     if (!editor.isEmbedded) {
@@ -33,7 +36,7 @@ object EditorKeymaps {
   def keymapping(e: CodeEditor) =
     typings.codemirrorView.mod.keymap.of(
       js.Array(
-        KeyBinding.fromCommand(insertTab, new Key("Tab")),
+        KeyBinding.tabKeybind,
         KeyBinding(_ => e.saveOrUpdate.runNow(), saveOrUpdate, true),
         KeyBinding(_ => e.saveOrUpdate.runNow(), saveOrUpdateAlt, true),
         KeyBinding(_ => e.openNewSnippetModal.runNow(), openNewSnippetModal, true),
@@ -63,14 +66,25 @@ case class Key(default: String, linux: String, mac: String, win: String) {
 }
 
 object KeyBinding {
-  def fromCommand(action: typings.codemirrorState.mod.StateCommand, key: Key, preventDefault: Boolean = false): JSKeyBinding = {
+  val tabKeybind: JSKeyBinding = {
+    val key = new Key("Tab")
     JSKeyBinding()
-      .setRun(x => action(x.asInstanceOf[anon.Dispatch]))
+      .setRun(view =>
+          if (!acceptCompletion(view)) {
+            view.dispatch(
+              TransactionSpec()
+                .setChanges(js.Dynamic.literal(from = view.state.selection.main.head, insert = "  ").asInstanceOf[ChangeSpec])
+                .setSelection(EditorSelection.single(view.state.selection.main.head + 2))
+            )
+            true
+          }
+          else false
+      )
       .setKey(key.default)
       .setLinux(key.linux)
       .setMac(key.mac)
       .setWin(key.win)
-      .setPreventDefault(preventDefault)
+      .setPreventDefault(true)
   }
 
   def apply(action: EditorView => Unit, key: Key, preventDefault: Boolean = false): JSKeyBinding = {

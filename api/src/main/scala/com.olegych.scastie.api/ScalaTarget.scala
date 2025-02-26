@@ -34,6 +34,8 @@ sealed trait ScalaTarget {
     if (digits.head == "2") digits.init.mkString(".")
     else digits.head
   }
+
+  def isJVMTarget = targetType == ScalaTargetType.Scala3 || targetType == ScalaTargetType.Scala2
 }
 
 object ScalaTarget {
@@ -118,7 +120,7 @@ object ScalaTarget {
       else if (scalaVersion == "2.13.0-RC1") ("org.spire-math", "0.9.10", "binary")
       else if (scalaVersion == "2.13.0-RC2") ("org.typelevel", "0.10.1", "binary")
       else if (scalaVersion == "2.13.0-RC3") ("org.typelevel", "0.10.2", "binary")
-      else if (scalaVersion >= "2.13.0") ("org.typelevel", "0.13.2", "full")
+      else if (scalaVersion >= "2.13.0") ("org.typelevel", "0.13.3", "full")
       else ("org.typelevel", "0.10.3", "binary")
     val paradise =
       if (scalaVersion.startsWith("2.10"))
@@ -265,7 +267,7 @@ object ScalaTarget {
   }
 
   object Scala3 {
-    def default: ScalaTarget = Scala3(BuildInfo.stable3)
+    def default: ScalaTarget = Scala3(BuildInfo.stableLTS)
 
     def defaultCode: String =
       """|// You can find more examples here:

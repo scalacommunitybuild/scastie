@@ -3,6 +3,7 @@ package scastie.metals
 import java.{util => ju}
 import java.net.URI
 import scala.meta.internal.metals._
+import scala.meta.pc.ContentType
 import scala.meta.pc.ParentSymbols
 import scala.meta.pc.SymbolDocumentation
 import scala.meta.pc.SymbolSearch
@@ -17,7 +18,8 @@ class ScastieSymbolSearch(docs: Docstrings, classpathSearch: ClasspathSearch) ex
     buildTargetIdentifier: String,
     visitor: SymbolSearchVisitor
   ): SymbolSearch.Result = {
-    classpathSearch.search(WorkspaceSymbolQuery.exact(query), visitor)
+    if query.nonEmpty then classpathSearch.search(WorkspaceSymbolQuery.exact(query), visitor)._1
+    else SymbolSearch.Result.INCOMPLETE
   }
 
   override def searchMethods(
@@ -25,7 +27,8 @@ class ScastieSymbolSearch(docs: Docstrings, classpathSearch: ClasspathSearch) ex
     buildTargetIdentifier: String,
     visitor: SymbolSearchVisitor
   ): SymbolSearch.Result = {
-    classpathSearch.search(WorkspaceSymbolQuery.exact(query), visitor)
+    if query.nonEmpty then classpathSearch.search(WorkspaceSymbolQuery.exact(query), visitor)._1
+    else SymbolSearch.Result.INCOMPLETE
   }
 
   def definition(symbol: String, source: URI): ju.List[Location] = {
@@ -42,6 +45,6 @@ class ScastieSymbolSearch(docs: Docstrings, classpathSearch: ClasspathSearch) ex
   override def documentation(
     symbol: String,
     parents: ParentSymbols
-  ): ju.Optional[SymbolDocumentation] = docs.documentation(symbol, parents)
+  ): ju.Optional[SymbolDocumentation] = docs.documentation(symbol, parents, ContentType.MARKDOWN)
 
 }

@@ -5,13 +5,13 @@ import java.nio.file.Path
 import java.util.ServiceLoader
 import scala.collection.concurrent.TrieMap
 import scala.jdk.CollectionConverters._
+import scala.meta.dialects._
 import scala.meta.internal.metals._
 import scala.meta.internal.metals.Embedded
 import scala.meta.internal.mtags._
 import scala.meta.internal.pc.ScalaPresentationCompiler
 import scala.meta.io.AbsolutePath
 import scala.meta.pc.PresentationCompiler
-import scala.meta.dialects._
 
 import cats.effect.implicits.monadCancelOps_
 import cats.effect.std.Semaphore
@@ -65,33 +65,38 @@ object BlockingServiceLoader {
  * IMPORTANT, Presentation compilers are stored to make sure we are not loading same classes with Classloader.
  * They are also not thread safe that's why their creation for the first time for specific `scalaVersion` is blocking.
  */
-class PresentationCompilers[F[_]: Async] {
+class PresentationCompilers[F[_]: Async](metalsWorkingDirectory: Path) {
   private val presentationCompilers: TrieMap[String, URLClassLoader] = TrieMap.empty
 
   // service loader must be blocking as it's not thread safe
   private val serviceLoader: F[BlockingServiceLoader[F]] = Semaphore[F](1).map(BlockingServiceLoader.instance[F])
   private val mtagsResolver                              = MtagsResolver.default()
 
-  val index = OnDemandSymbolIndex.empty()
-  val docs  = new Docstrings(index)
+  val index = OnDemandSymbolIndex.empty()(
+    using EmptyReportContext
+  )
+
+  val docs = new Docstrings(index)
 
   JdkSources().foreach(jdk => index.addSourceJar(jdk, Scala213))
 
   def createPresentationCompiler(classpath: Seq[Path], version: String, mtags: MtagsBinaries): F[PresentationCompiler] =
-    prepareClasspathSearch(classpath) >>= { classpathSearch =>
+    prepareClasspathSearch(classpath, version) >>= { classpathSearch =>
       (mtags match {
         case MtagsBinaries.BuildIn              => Sync[F].delay(ScalaPresentationCompiler(classpath = classpath))
         case artifacts: MtagsBinaries.Artifacts => presentationCompiler(artifacts, classpath)
       }).map(pc =>
         pc.newInstance("", classpath.filterNot(isSourceJar).asJava, Nil.asJava)
           .withSearch(ScastieSymbolSearch(docs, classpathSearch))
+          .withWorkspace(metalsWorkingDirectory)
       )
     }
 
-  private def prepareClasspathSearch(classpath: Seq[Path]): F[ClasspathSearch] = Sync[F].delay {
-    classpath.filter(isSourceJar).foreach { path =>
-      index.addSourceJar(AbsolutePath(path), ScalaVersions.dialectForDependencyJar(AbsolutePath(path).filename))
-    }
+  private def prepareClasspathSearch(classpath: Seq[Path], version: String): F[ClasspathSearch] = Sync[F].delay {
+    classpath.filter(isSourceJar).foreach { path => {
+      val libVersion = ScalaVersions.scalaBinaryVersionFromJarName(path.getFileName.toString).getOrElse(version)
+      index.addSourceJar(AbsolutePath(path), ScalaVersions.dialectForScalaVersion(libVersion, true))
+    }}
 
     ClasspathSearch.fromClasspath(classpath.filterNot(isSourceJar), ExcludedPackagesHandler.default)
   }
@@ -107,8 +112,12 @@ class PresentationCompilers[F[_]: Async] {
         newPresentationCompilerClassLoader(mtags, scalaLibrary)
       )
     } >>= (classloader =>
-      serviceLoader.flatMap(
-        _.load(classOf[PresentationCompiler], classOf[ScalaPresentationCompiler].getName(), classloader)
+      serviceLoader.flatMap(serviceLoader =>
+        val classname =
+          if (mtags.isScala3PresentationCompiler) "dotty.tools.pc.ScalaPresentationCompiler"
+          else classOf[ScalaPresentationCompiler].getName()
+
+        serviceLoader.load(classOf[PresentationCompiler], classname, classloader)
       )
     )
 

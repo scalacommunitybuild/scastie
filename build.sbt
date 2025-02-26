@@ -1,3 +1,4 @@
+import scala.sys.process._
 import scala.sys.process.ProcessLogger
 
 import com.typesafe.sbt.SbtNativePackager.Universal
@@ -9,7 +10,10 @@ def akka(module: String) = "com.typesafe.akka" %% ("akka-" + module) % "2.6.19"
 val akkaHttpVersion = "10.2.9"
 
 addCommandAlias("startAll", "sbtRunner/reStart;server/reStart;metalsRunner/reStart;client/fastLinkJS")
-addCommandAlias("startAllProd", "sbtRunner/reStart;metalsRunner/reStart;server/fullLinkJS/reStart")
+addCommandAlias(
+  "startAllProd",
+  "sbtRunner/reStart;metalsRunner/reStart;server/buildTreesitterWasm;server/fullLinkJS/reStart"
+)
 
 val yarnBuild = taskKey[Unit]("builds es modules with `yarn build`")
 
@@ -41,14 +45,14 @@ lazy val scastie = project
   .settings(Deployment.settings(server, sbtRunner, metalsRunner))
 
 lazy val testSettings = Seq(
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.16" % Test
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
 )
 
 lazy val loggingAndTest = Seq(
   libraryDependencies ++= Seq(
-    "ch.qos.logback"              % "logback-classic" % "1.4.7",
+    "ch.qos.logback"              % "logback-classic" % "1.4.14",
     "com.typesafe.scala-logging" %% "scala-logging"   % "3.9.5",
-    "io.sentry"                   % "sentry-logback"  % "6.19.1"
+    "io.sentry"                   % "sentry-logback"  % "6.34.0"
   )
 ) ++ testSettings
 
@@ -121,15 +125,15 @@ lazy val metalsRunner = project
       .dependsOn(runnerRuntimeDependencies: _*)
       .value,
     maintainer   := "scalacenter",
-    scalaVersion := ScalaVersions.stable3,
+    scalaVersion := ScalaVersions.stableLTS,
     libraryDependencies ++= Seq(
-      "org.scalameta"        % "metals"              % "0.11.12" cross (CrossVersion.for3Use2_13),
-      "org.eclipse.lsp4j"    % "org.eclipse.lsp4j"   % "0.21.0",
-      "org.http4s"          %% "http4s-ember-server" % "0.23.19",
-      "org.http4s"          %% "http4s-ember-client" % "0.23.19",
-      "org.http4s"          %% "http4s-dsl"          % "0.23.19",
-      "org.http4s"          %% "http4s-circe"        % "0.23.19",
-      "io.circe"            %% "circe-generic"       % "0.14.5",
+      "org.scalameta"        % "metals"              % "1.4.2" cross (CrossVersion.for3Use2_13),
+      "org.eclipse.lsp4j"    % "org.eclipse.lsp4j"   % "0.21.1",
+      "org.http4s"          %% "http4s-ember-server" % "0.23.24",
+      "org.http4s"          %% "http4s-ember-client" % "0.23.24",
+      "org.http4s"          %% "http4s-dsl"          % "0.23.24",
+      "org.http4s"          %% "http4s-circe"        % "0.23.24",
+      "io.circe"            %% "circe-generic"       % "0.14.6",
       "com.evolutiongaming" %% "scache"              % "4.2.3",
       "org.scalameta"       %% "munit"               % "0.7.29" % Test,
       "org.typelevel"       %% "munit-cats-effect-3" % "1.0.7"  % Test
@@ -151,7 +155,7 @@ lazy val sbtRunner = project
       akka("testkit") % Test,
       akka("cluster"),
       akka("slf4j"),
-      "org.scalameta" %% "scalafmt-core" % "3.7.1"
+      "org.scalameta" %% "scalafmt-core" % "3.7.17"
     ),
     docker / imageNames := Seq(
       ImageName(namespace = Some(dockerOrg), repository = "scastie-sbt-runner", tag = Some(gitHashNow)),
@@ -185,20 +189,64 @@ lazy val sbtRunner = project
   .dependsOn(api.jvm(ScalaVersions.jvm), instrumentation, utils)
   .enablePlugins(sbtdocker.DockerPlugin, BuildInfoPlugin)
 
+lazy val buildTreesitterWasm = taskKey[Seq[File]]("Builds tree-sitter-scala.wasm")
+
 lazy val server = project
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
   .settings(
     watchSources ++= (client / watchSources).value,
     Compile / products += (client / baseDirectory).value / "dist",
-    fullLinkJS / reStart   := reStart.dependsOn(client / Compile / fullLinkJS / yarnBuild).evaluated,
-    Universal / packageBin := (Universal / packageBin).dependsOn(client / Compile / fullLinkJS / yarnBuild).value,
+    fullLinkJS / reStart := reStart.dependsOn(client / Compile / fullLinkJS / yarnBuild).evaluated,
+    Universal / packageBin := (Universal / packageBin)
+      .dependsOn(buildTreesitterWasm)
+      .dependsOn(client / Compile / fullLinkJS / yarnBuild)
+      .value,
     reStart / javaOptions += "-Xmx512m",
     maintainer := "scalacenter",
+    buildTreesitterWasm := {
+      val treeSitterOutputName = "tree-sitter.wasm"
+      val treeSitterWasm = baseDirectory.value.getParentFile / "node_modules" / "web-tree-sitter" / treeSitterOutputName
+
+      val treeSitterScalaOutputName = "tree-sitter-scala.wasm"
+      val treeSitterScalaWasm = baseDirectory.value.getParentFile / "tree-sitter-scala" / treeSitterScalaOutputName
+
+      val treeSitterScalaHiglightName = "highlights.scm"
+      val treeSitterScalaHiglight =
+        baseDirectory.value.getParentFile / "tree-sitter-scala" / "queries" / treeSitterScalaHiglightName
+
+      val outputWasmDirectory = (Compile / resourceDirectory).value / "public"
+
+      val s: TaskStreams     = streams.value
+      val shell: Seq[String] = if (sys.props("os.name").contains("Windows")) Seq("cmd", "/c") else Seq("bash", "-c")
+      val updateGitSubmodule: Seq[String] = shell :+ "git submodule update --init"
+
+      val installNpmDependencies: Seq[String] = shell :+ "cd tree-sitter-scala && npm install"
+      val buildWasm: Seq[String] = shell :+ "cd tree-sitter-scala && npx tree-sitter build --wasm ."
+      s.log.info("building tree-sitter-scala wasm...")
+
+      if ((updateGitSubmodule #&& installNpmDependencies #&& buildWasm !) == 0) {
+        s.log.success(s"$treeSitterOutputName build successfuly!")
+      } else {
+        throw new IllegalStateException(s"Failed to generate $treeSitterOutputName!")
+      }
+
+      sbt.IO.copyFile(treeSitterScalaHiglight, outputWasmDirectory / treeSitterScalaHiglightName)
+      sbt.IO.move(treeSitterScalaWasm, outputWasmDirectory / treeSitterScalaOutputName)
+      sbt.IO.copyFile(treeSitterWasm, outputWasmDirectory / treeSitterOutputName)
+      s.log.success(
+        s"Copied $treeSitterScalaHiglight to ${(outputWasmDirectory / treeSitterScalaHiglightName).getAbsolutePath}"
+      )
+      s.log.success(
+        s"Copied $treeSitterScalaWasm to ${(outputWasmDirectory / treeSitterScalaOutputName).getAbsolutePath}"
+      )
+      s.log.success(s"Copied $treeSitterWasm to ${(outputWasmDirectory / treeSitterOutputName).getAbsolutePath}")
+      Seq(outputWasmDirectory / treeSitterScalaOutputName, outputWasmDirectory / treeSitterOutputName)
+    },
     libraryDependencies ++= Seq(
-      "org.apache.commons"                  % "commons-text"   % "1.10.0",
+      "org.apache.commons"                  % "commons-text"   % "1.11.0",
       "com.typesafe.akka"                  %% "akka-http"      % akkaHttpVersion,
-      "com.softwaremill.akka-http-session" %% "core"           % "0.7.0",
+      "com.softwaremill.akka-http-session" %% "core"           % "0.7.1",
       "ch.megard"                          %% "akka-http-cors" % "1.2.0",
       akka("cluster"),
       akka("slf4j"),
@@ -223,11 +271,15 @@ lazy val storage = project
   .settings(
     scalacOptions += "-Ywarn-unused",
     libraryDependencies ++= Seq(
-      "org.mongodb.scala" %% "mongo-scala-driver" % "4.9.1",
+      "org.mongodb.scala" %% "mongo-scala-driver" % "4.11.1",
       "net.lingala.zip4j"  % "zip4j"              % "2.11.5"
     )
   )
   .dependsOn(api.jvm(ScalaVersions.jvm), utils, instrumentation)
+
+lazy val yarnBin =
+  if (scala.util.Properties.isWin) "yarn.cmd"
+  else "yarn"
 
 lazy val client = project
   .enablePlugins(ScalablyTypedConverterExternalNpmPlugin)
@@ -235,7 +287,7 @@ lazy val client = project
   .settings(baseJsSettings)
   .settings(
     externalNpm := {
-      scala.sys.process.Process("yarn", baseDirectory.value.getParentFile) ! ProcessLogger(line => ())
+      Process(yarnBin, baseDirectory.value.getParentFile) ! ProcessLogger(line => ())
       baseDirectory.value.getParentFile
     },
     stFlavour := Flavour.ScalajsReact,
@@ -249,7 +301,7 @@ lazy val client = project
       scalaJSLinkerConfig.value.withModuleKind(ModuleKind.ESModule)
     },
     yarnBuild := {
-      scala.sys.process.Process("yarn build").!
+      Process(s"$yarnBin build").!
     },
     test                        := {},
     Test / loadedTestFrameworks := Map(),
@@ -259,11 +311,13 @@ lazy val client = project
       "github-markdown-css",
       "react",
       "react-dom",
-      "source-map-support"
+      "source-map-support",
+      "vite"
     ),
     libraryDependencies ++= Seq(
-      "com.github.japgolly.scalajs-react" %%% "core"  % "2.1.1",
-      "com.github.japgolly.scalajs-react" %%% "extra" % "2.1.1"
+      "com.github.japgolly.scalajs-react" %%% "core"                        % "2.1.1",
+      "com.github.japgolly.scalajs-react" %%% "extra"                       % "2.1.1",
+      "org.scala-js"                      %%% "scala-js-macrotask-executor" % "1.1.1"
     )
   )
   .enablePlugins(ScalaJSPlugin)
@@ -274,7 +328,7 @@ lazy val instrumentation = project
   .settings(loggingAndTest)
   .settings(
     libraryDependencies ++= Seq(
-      "org.scalameta"                 %% "scalameta" % "4.7.7",
+      "org.scalameta"                 %% "scalameta" % "4.12.6",
       "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0" % Test
     )
   )

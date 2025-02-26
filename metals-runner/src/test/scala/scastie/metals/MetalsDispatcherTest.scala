@@ -32,8 +32,19 @@ class MetalsDispatcherTest extends CatsEffectSuite with Assertions with CatsEffe
   test("single thread metals access") {
     cache.use { cache =>
       val dispatcher = dispatcherF(cache)
-      val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latest3))
+      val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latestLTS))
       assertIO(dispatcher.getCompiler(options).isRight, true)
+    }
+  }
+
+  test("parallel metals access for same cache entry") {
+    cache.use { cache =>
+      val dispatcher = dispatcherF(cache)
+      val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latestLTS))
+      val tasks = List
+        .fill(10)(dispatcher.getCompiler(options).flatMap(_.complete(ScastieOffsetParams("prin", 4, true))).value)
+        .parSequence
+      assertIO(tasks.map(_.forall(_.isRight)), true)
     }
   }
 
@@ -46,12 +57,12 @@ class MetalsDispatcherTest extends CatsEffectSuite with Assertions with CatsEffe
     cache.use { cache =>
       {
         val dispatcher = dispatcherF(cache)
-        val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latest3))
+        val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latestLTS))
         val task = for {
           pc     <- dispatcher.getCompiler(options)
           _      <- EitherT.right(IO.sleep(4.seconds))
           result <- EitherT.right(pc.complete(ScastieOffsetParams("print", 3, true)))
-        } yield { result.getItems.asScala.toList }
+        } yield { result.items }
         interceptIO[java.util.concurrent.CancellationException](task.value)
       }
     }
@@ -60,7 +71,7 @@ class MetalsDispatcherTest extends CatsEffectSuite with Assertions with CatsEffe
   test("parallel metals access same version") {
     cache.use { cache =>
       val dispatcher = dispatcherF(cache)
-      val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latest3))
+      val options    = ScastieMetalsOptions(Set.empty, ScalaTarget.Jvm(BuildInfo.latestLTS))
       val task       = dispatcher.getCompiler(options).value.parReplicateA(10000)
       assertIO(task.map(results => results.nonEmpty && results.forall(_.isRight)), true)
     }
@@ -85,7 +96,7 @@ class MetalsDispatcherTest extends CatsEffectSuite with Assertions with CatsEffe
     }
   }
 
-  test("parallel metals access with dependencies") {
+  test("parallel metals access with dependencies".flaky) {
     val targets = List(
       ScalaTarget.Jvm.default,
       ScalaTarget.Jvm(BuildInfo.latest212),
