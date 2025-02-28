@@ -15,19 +15,19 @@ import org.slf4j.LoggerFactory
 object FormatActor {
   private[sbt] def format(code: String, isWorksheetMode: Boolean, scalaTarget: ScalaTarget): Either[String, String] = {
     val config: ScalafmtConfig = {
-      val dialect =
-        if (scalaTarget.scalaVersion.startsWith("2.12")) NamedDialect.scala212
-        else if (scalaTarget.scalaVersion.startsWith("2.13")) NamedDialect.scala213
-        else if (scalaTarget.scalaVersion.startsWith("3")) NamedDialect.scala3
-        else NamedDialect.scala213
+      import scala.meta.dialects
+      val dialect: NamedDialect =
+        if (scalaTarget.scalaVersion.startsWith("2.12")) dialects.scala212
+        else if (scalaTarget.scalaVersion.startsWith("2.13")) dialects.scala213
+        else if (scalaTarget.scalaVersion.startsWith("3")) dialects.scala3
+        else dialects.scala213
 
       val runner = {
         if (isWorksheetMode && scalaTarget.hasWorksheetMode)
           RunnerSettings.sbt
         else
           RunnerSettings.default
-      }.withDialect(NamedDialect(NamedDialect.getName(dialect).get, dialect))
-
+      }.withDialect(dialect)
       ScalafmtConfig.default.copy(runner = runner)
     }
 
