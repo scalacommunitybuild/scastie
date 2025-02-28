@@ -20,7 +20,7 @@ object FormatActor {
         if (scalaTarget.scalaVersion.startsWith("2.12")) dialects.Scala212
         else if (scalaTarget.scalaVersion.startsWith("2.13")) dialects.Scala213
         else if (scalaTarget.scalaVersion.startsWith("3")) dialects.Scala3
-        else dialects.scala213
+        else dialects.Scala213
 
       val runner = {
         if (isWorksheetMode && scalaTarget.hasWorksheetMode)
