@@ -10,7 +10,7 @@ case class Patch(from: Token, to: Token, replace: String) {
       token.end <= to.end &&
       token.start >= from.start
 
-  val tokens: scala.Seq[Token] = replace.tokenize.get.tokens.toSeq
+  val tokens: scala.Seq[Token] = replace.tokenize.get
   def runOn(str: Seq[Token]): Seq[Token] = {
     str.flatMap {
       case `from`              => tokens
