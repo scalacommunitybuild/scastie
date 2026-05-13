@@ -151,12 +151,10 @@ lazy val sbtRunner = project
   .in(file("sbt-runner"))
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
-  .settings(runnerRuntimeDependenciesInTest)
   .settings(
     reStart / javaOptions += "-Xmx256m",
     Test / parallelExecution := false,
-    reStart                  := reStart.dependsOn(runnerRuntimeDependencies: _*).evaluated,
-    resolvers ++= Resolver.sonatypeOssRepos("public"),
+    resolvers += Resolver.sonatypeRepo("public"),
     libraryDependencies ++= Seq(
       akka("actor"),
       akka("testkit") % Test,
@@ -286,7 +284,6 @@ lazy val server = project
 lazy val balancer = project
   .settings(baseNoCrossSettings)
   .settings(loggingAndTest)
-  .settings(smallRunnerRuntimeDependenciesInTest)
   .settings(
     libraryDependencies += akka("testkit") % Test
   )
